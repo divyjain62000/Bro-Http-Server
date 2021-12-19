@@ -1,7 +1,58 @@
 #include <iostream>
+#include<map>
+#include<forward_list>
 using namespace std;
 
 // Amit [ The Bro Programmer ]
+
+/**
+ * @brief Contains all methods related to validation
+ * 
+ */
+class Validator
+{
+private:
+    Validator() {}
+
+public:
+    /**
+     * @brief To validate MIME Type
+     * 
+     * @param mimeType 
+     * @return true 
+     * @return false 
+     */
+    static bool isValidMIMEType(string &mimeType)
+    {
+        //right now do nothing
+        return true;
+    }
+
+    /**
+     * @brief To validate path
+     * 
+     * @param path 
+     * @return true 
+     * @return false 
+     */
+    static bool isValidPath(string &path)
+    {
+        //right now do nothing
+        return true;
+    }
+
+    /**
+     * @brief To validate URL format
+     * 
+     * @return true 
+     * @return false 
+     */
+    static bool isValidURLFormat(string url)
+    {
+        //right now do nothing
+        return true;
+    }
+};
 
 /**
  * @brief This class contains all fields and methods related to error
@@ -46,7 +97,33 @@ class Request
  */
 class Response
 {
+private:
+    string contentType;
+    forward_list<string> content;
+    unsigned long contentLength;
+    forward_list<string>::iterator contentIterator;
 public:
+
+    /**
+     * @brief Construct a new Response object
+     * 
+     */
+    Response()
+    {
+        this->contentLength=0;
+        this->contentIterator=this->content.before_begin();
+    }
+
+    /**
+     * @brief Destroy the Response object
+     * 
+     */
+    ~Response()
+    {
+        //not yet decided
+    }
+
+
     /**
      * @brief Set the Content Type
      * 
@@ -54,7 +131,8 @@ public:
      */
     void setContentType(string contentType)
     {
-        //do nothing right now
+        if (Validator::isValidMIMEType(contentType))
+            this->contentType = contentType;
     }
 
     /**
@@ -65,7 +143,8 @@ public:
      */
     Response &operator<<(string content)
     {
-        //right now do nothing
+        this->contentLength+=content.length();
+        this->contentIterator=this->content.insert_after(this->contentIterator,content);
         return *this;
     }
 };
@@ -76,7 +155,26 @@ public:
  */
 class Bro
 {
+private:
+    string staticResourcesFolder;
+    map<string,void (*)(Request &,Response &)> urlMappings;
 public:
+    /**
+     * @brief Construct a new Bro object
+     * 
+     */
+    Bro()
+    {
+    }
+
+    /**
+     * @brief Destroy the Bro object
+     * 
+     */
+    ~Bro()
+    {
+    }
+
     /**
      * @brief Set the Static Resources Folder
      * 
@@ -84,18 +182,28 @@ public:
      */
     void setStaticResourcesFolder(string staticResourcesFolder)
     {
-        //do nothing right now
+        if (Validator::isValidPath(staticResourcesFolder))
+        {
+            this->staticResourcesFolder = staticResourcesFolder;
+        }
+        else
+        {
+            //not yet decided
+        }
     }
 
     /**
      * @brief To handle GET Type request with particular urlPattern
      * 
-     * @param urlPattern 
+     * @param url
      * @param callBack 
      */
-    void get(string urlPattern, void (*callBack)(Request &, Response &))
+    void get(string url, void (*callBack)(Request &, Response &))
     {
-        //do nothing right now
+        if(Validator::isValidURLFormat(url))
+        {
+            urlMappings.insert(pair<string,void (*)(Request &,Response &)>(url,callBack));
+        }
     }
 
     /**
@@ -120,7 +228,7 @@ int main()
      * @brief If request is of GET type and url is / (i.e no resource name has been specified) then this function should get executed
      * 
      */
-    bro.get("/", [](Request &request, Response &response) void
+    bro.get("/", [](Request &request, Response &response) -> void
             {
                 const char *html = R""""(
             <!DOCTYOE HTML>
@@ -144,7 +252,7 @@ int main()
      * @brief If request is of GET type and url is /getCustomers (i.e resource name has been specified) then this function should get executed
      * 
      */
-    bro.get("/getCustomers", [](Request &request, Response &response) void
+    bro.get("/getCustomers", [](Request &request, Response &response) -> void
             {
                 const char *html = R""""(
             <!DOCTYPE HTML>
@@ -172,7 +280,7 @@ int main()
      * @brief Here we specify port number on which Bro HTTP server accept request
      * 
      */
-    bro.listen(6060, [](Error &error) void
+    bro.listen(6060, [](Error &error) -> void
                {
                    if (error.hasError())
                    {
