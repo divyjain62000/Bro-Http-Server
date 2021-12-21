@@ -1,7 +1,19 @@
 #include <iostream>
-#include<map>
-#include<forward_list>
+#include <map>
+#include <forward_list>
 using namespace std;
+
+//Defining error related macros
+
+#define ERR_CREATING_SOCKET "Unable to create socket"
+#define ERR_BINDING_SOCKET_TO_PORT "Unable to bind socket to port : "
+#define ERR_ACCEPT_CLIENT_CONNECTION "Unable to accept client connection"
+
+//Defining socket binding and related things macros
+#define QUEUE_SIZE 10
+
+
+
 
 // Amit [ The Bro Programmer ]
 
@@ -60,7 +72,20 @@ public:
  */
 class Error
 {
+private:
+    string error;
+
 public:
+    /**
+     * @brief Construct a new Error object
+     * 
+     * @param error 
+     */
+    Error(string error)
+    {
+        this->error = error;
+    }
+
     /**
      * @brief If there will be an error this method return true otherwise it return false
      * 
@@ -69,7 +94,7 @@ public:
      */
     bool hasError()
     {
-        return false;
+        return this->error.length() > 0;
     }
 
     /**
@@ -79,7 +104,7 @@ public:
      */
     string getError()
     {
-        return "";
+        return this->error;
     }
 };
 
@@ -102,16 +127,16 @@ private:
     forward_list<string> content;
     unsigned long contentLength;
     forward_list<string>::iterator contentIterator;
-public:
 
+public:
     /**
      * @brief Construct a new Response object
      * 
      */
     Response()
     {
-        this->contentLength=0;
-        this->contentIterator=this->content.before_begin();
+        this->contentLength = 0;
+        this->contentIterator = this->content.before_begin();
     }
 
     /**
@@ -122,7 +147,6 @@ public:
     {
         //not yet decided
     }
-
 
     /**
      * @brief Set the Content Type
@@ -143,8 +167,8 @@ public:
      */
     Response &operator<<(string content)
     {
-        this->contentLength+=content.length();
-        this->contentIterator=this->content.insert_after(this->contentIterator,content);
+        this->contentLength += content.length();
+        this->contentIterator = this->content.insert_after(this->contentIterator, content);
         return *this;
     }
 };
@@ -157,7 +181,8 @@ class Bro
 {
 private:
     string staticResourcesFolder;
-    map<string,void (*)(Request &,Response &)> urlMappings;
+    map<string, void (*)(Request &, Response &)> urlMappings;
+
 public:
     /**
      * @brief Construct a new Bro object
@@ -200,9 +225,9 @@ public:
      */
     void get(string url, void (*callBack)(Request &, Response &))
     {
-        if(Validator::isValidURLFormat(url))
+        if (Validator::isValidURLFormat(url))
         {
-            urlMappings.insert(pair<string,void (*)(Request &,Response &)>(url,callBack));
+            urlMappings.insert(pair<string, void (*)(Request &, Response &)>(url, callBack));
         }
     }
 
@@ -214,7 +239,44 @@ public:
      */
     void listen(int portNumber, void (*callBack)(Error &))
     {
-        //do nothing right now
+        int serverSocketDescriptor;
+        serverSocketDescriptor=socket(AF_INET, SOCK_STREAM,IPPROTO_TCP);
+        if(serverSocketDescriptor<0)
+        {
+            Error error(ERR_CREATING_SOCKET);
+            callBack(error);
+            return;
+        }
+        struct sockaddr_in serverSocketInformation;
+        serverSocketInformation.sin_family=AF_INET;
+        serverSocketInformation.sin_port=htons(portNumber);
+        serverSocketInformation.sin_addr.s_addr=htonl(INADDR_ANY);
+        int successCode=bind(serverSocketDescriptor,(struct sockaddr *)&serverSocketInformation,sizeof(serverSocketInformation));
+        if(successCode<0)
+        {
+            close(serverSocketDescriptor);
+            string err=ERR_BINDING_SOCKET_TO_PORT+to_string(portNumber);
+            Error error(err);
+            callBack(error);
+            return;
+        }
+        successCode=listen(serverSocketDescriptor,QUEUE_SIZE);
+        if(successCode<0)
+        {
+            close(serverSocketDescriptor);
+            Error error(ERR_ACCEPT_CLIENT_CONNECTION);
+            callBack(error);
+            return;
+        }
+
+        /*
+            If we able to reach at that point server is able to go in listen mode
+            So we make error object with empty string so whaterver user want to print
+            when connection successfull will able to print
+        */
+        Error error("");
+        callBack(error);
+
     }
 };
 
