@@ -2,8 +2,7 @@
 #include <map>
 #include <forward_list>
 #include<string.h>
-#include<arpa/inet.h>
-#include<sys/socket.h>
+#include<windows.h>
 #include<unistd.h>
 
 using namespace std;
@@ -246,6 +245,12 @@ public:
      */
     void listen(int portNumber, void (*callBack)(Error &))
     {
+
+        WSADATA wsaData;
+        WORD ver;
+        ver=MAKEWORD(1,1);
+        WSAStartup(ver,&wsaData);
+
         char requestBuffer[4096];
         int requestLength;
 
@@ -253,6 +258,7 @@ public:
         serverSocketDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (serverSocketDescriptor < 0)
         {
+            WSACleanup();
             Error error(ERR_CREATING_SOCKET);
             callBack(error);
             return;
@@ -265,6 +271,7 @@ public:
         if (successCode < 0)
         {
             close(serverSocketDescriptor);
+            WSACleanup();
             string err = ERR_BINDING_SOCKET_TO_PORT + to_string(portNumber);
             Error error(err);
             callBack(error);
@@ -274,6 +281,7 @@ public:
         if (successCode < 0)
         {
             close(serverSocketDescriptor);
+            WSACleanup();
             Error error(ERR_ACCEPT_CLIENT_CONNECTION);
             callBack(error);
             return;
@@ -288,7 +296,7 @@ public:
         callBack(error);
 
         struct sockaddr_in clientSocketInformation;
-        socklen_t len = sizeof(clientSocketInformation);
+        int len = sizeof(clientSocketInformation);
 
         int clientSocketDescriptor;
         while (1)
