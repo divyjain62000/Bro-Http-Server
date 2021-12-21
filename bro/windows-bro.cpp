@@ -246,10 +246,10 @@ public:
     void listen(int portNumber, void (*callBack)(Error &))
     {
 
-        WSADATA wsaData;
-        WORD ver;
-        ver=MAKEWORD(1,1);
-        WSAStartup(ver,&wsaData);
+        WSADATA wsaData;//Code specific to windows platform
+        WORD ver;//Code specific to windows platform
+        ver=MAKEWORD(1,1);//Code specific to windows platform
+        WSAStartup(ver,&wsaData);//Code specific to windows platform
 
         char requestBuffer[4096];
         int requestLength;
@@ -258,7 +258,7 @@ public:
         serverSocketDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (serverSocketDescriptor < 0)
         {
-            WSACleanup();
+            WSACleanup();//Code specific to windows platform
             Error error(ERR_CREATING_SOCKET);
             callBack(error);
             return;
@@ -271,7 +271,7 @@ public:
         if (successCode < 0)
         {
             close(serverSocketDescriptor);
-            WSACleanup();
+            WSACleanup();//Code specific to windows platform
             string err = ERR_BINDING_SOCKET_TO_PORT + to_string(portNumber);
             Error error(err);
             callBack(error);
@@ -281,7 +281,7 @@ public:
         if (successCode < 0)
         {
             close(serverSocketDescriptor);
-            WSACleanup();
+            WSACleanup();//Code specific to windows platform
             Error error(ERR_ACCEPT_CLIENT_CONNECTION);
             callBack(error);
             return;
