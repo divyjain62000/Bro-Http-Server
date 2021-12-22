@@ -1,10 +1,17 @@
 #include <iostream>
 #include <map>
 #include <forward_list>
-#include<string.h>
-#include<arpa/inet.h>
-#include<sys/socket.h>
-#include<unistd.h>
+#include <string.h>
+#include <unistd.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef linux
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#endif
 
 using namespace std;
 
@@ -13,14 +20,11 @@ using namespace std;
 #define ERR_BINDING_SOCKET_TO_PORT "Unable to bind socket to port : "
 #define ERR_ACCEPT_CLIENT_CONNECTION "Unable to accept client connection"
 
-
 //Defining socket binding and related things macros
 #define QUEUE_SIZE 10
 
-
 //Global Variables
 int x;
-
 
 // Amit [ The Bro Programmer ]
 
@@ -246,13 +250,24 @@ public:
      */
     void listen(int portNumber, void (*callBack)(Error &))
     {
-        char requestBuffer[4096];
+
+#ifdef _WIN32
+        WSADATA wsaData;
+        WORD ver;
+        ver = MAKEWORD(1, 1);
+        WSAStartup(ver, &wsaData);
+#endif
+
+        char requestBuffer[4097]; //Instead of 4096 we make array of 4097 because we have to add \0 by ourself that's why we need one extra space
         int requestLength;
 
         int serverSocketDescriptor;
         serverSocketDescriptor = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (serverSocketDescriptor < 0)
         {
+#ifdef _WIN32
+            WSACleanup();
+#endif
             Error error(ERR_CREATING_SOCKET);
             callBack(error);
             return;
@@ -265,6 +280,9 @@ public:
         if (successCode < 0)
         {
             close(serverSocketDescriptor);
+#ifdef _WIN32
+            WSACleanup();
+#endif
             string err = ERR_BINDING_SOCKET_TO_PORT + to_string(portNumber);
             Error error(err);
             callBack(error);
@@ -274,6 +292,9 @@ public:
         if (successCode < 0)
         {
             close(serverSocketDescriptor);
+#ifdef _WIN32
+            WSACleanup();
+#endif
             Error error(ERR_ACCEPT_CLIENT_CONNECTION);
             callBack(error);
             return;
@@ -288,32 +309,75 @@ public:
         callBack(error);
 
         struct sockaddr_in clientSocketInformation;
+#ifdef linux
         socklen_t len = sizeof(clientSocketInformation);
+#endif
+#ifdef _WIN32
+        int len = sizeof(clientSocketInformation);
+#endif
 
         int clientSocketDescriptor;
         while (1)
         {
-            clientSocketDescriptor=accept(serverSocketDescriptor,(struct sockaddr *)&clientSocketInformation,&len);
-            if(clientSocketDescriptor<0)
+            clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *)&clientSocketInformation, &len);
+            if (clientSocketDescriptor < 0)
             {
                 //not yet decided, will write this code later on
             }
-            requestLength=recv(clientSocketDescriptor,requestBuffer,sizeof(requestBuffer),0);
-            if(requestLength>0)
+
+            forward_list<string> requestBufferDS;
+            forward_list<string>::iterator requestBufferDSIterator;
+            requestBufferDSIterator = requestBufferDS.before_begin();
+            int requestBufferDSSize = 0;
+            int requestDataCount = 0;
+
+            while (1)
             {
-                for(x=0;x<requestLength;x++) printf("%c",requestBuffer[x]);
-                const char *response=
-                "HTTP/1.1 200 OK\r\n"
-                "Connection: close\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: 144\r\n\r\n"
-                "<html><head><title>Thinking Machines</title></head>"
-                "<body><h1>Thinking Machines</h1>"
-                "<h3>We Teach You More Than We Promise To Teach</h3></body></html>";
-                send(clientSocketDescriptor,response,strlen(response),0);
+                requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
+                if (requestLength == 0)
+                    break;
+                requestBuffer[requestLength] = '\0';
+                requestBufferDS.insert_after(requestBufferDSIterator, string(requestBuffer));
+                requestBufferDSSize++;
+                requestDataCount += requestLength;
             }
-        //lot of code go here
+            if (requestBufferDSSize > 0)
+            {
+                char *requestData = new char[requestDataCount + 1];
+                char *p;
+                p = requestData;
+                requestBufferDSIterator = requestBufferDS.begin();
+                const char *q;
+                while (requestBufferDSIterator != requestBufferDS.end())
+                {
+                    q = (*requestBufferDSIterator).c_str();
+                    while (*q)
+                    {
+                        *p = *q;
+                        p++;
+                        q++;
+                    }
+                    ++requestBufferDSIterator;
+                }
+                *p = '\0';
+                requestBufferDS.clear();
+
+                printf("--------request data begin-----------\n");
+                printf("%s\n", requestData);
+                printf("--------request data end-----------\n");
+                //the code to parse the request goes here
+                delete[] requestData;
+            }
+            else
+            {
+                //something if no data was received
+            }
+            close(clientSocketDescriptor);
+            //lot of code go here
         } //infinite loop
+#ifdef _WIN32
+        WSACleanup();
+#endif
     }
 };
 
