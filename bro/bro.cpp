@@ -185,6 +185,32 @@ public:
 };
 
 /**
+ * @brief enum of request methods
+ * 
+ */
+enum __request_method__
+{
+    __GET__,
+    __POST__,
+    __PUT__,
+    __DELETE__,
+    __CONNECT__,
+    __HEAD__,
+    __OPTIONS__,
+    __TRACE__
+};
+
+/**
+ * @brief structure of url mapping
+ * 
+ */
+typedef struct __url__mapping
+{
+    __request_method__ requestMethod;
+    void (*mappedFunction)(Request &, Response &);
+} URLMapping;
+
+/**
  * @brief This class contains fields and methods related to our Bro HTTP Server
  * 
  */
@@ -192,7 +218,7 @@ class Bro
 {
 private:
     string staticResourcesFolder;
-    map<string, void (*)(Request &, Response &)> urlMappings;
+    map<string, URLMapping> urlMappings;
 
 public:
     /**
@@ -238,7 +264,7 @@ public:
     {
         if (Validator::isValidURLFormat(url))
         {
-            urlMappings.insert(pair<string, void (*)(Request &, Response &)>(url, callBack));
+            urlMappings.insert(pair<string, URLMapping>(url,{__GET__,callBack}));
         }
     }
 
