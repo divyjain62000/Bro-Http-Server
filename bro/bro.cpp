@@ -346,58 +346,18 @@ public:
         while (1)
         {
             clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *)&clientSocketInformation, &len);
-            if (clientSocketDescriptor < 0)
+            requestLength=recv(clientSocketDescriptor,requestBuffer,sizeof(requestBuffer)-sizeof(char),0);
+            if(requestLength==0 || requestLength==-1)
             {
-                //not yet decided, will write this code later on
+                close(clientSocketDescriptor);
+                continue;
             }
+            requestBuffer[requestLength]='\0';
+            // code to parse the first line of the http request starts here
+            // first line should be REQUEST_METHOD SPACE URI SPACE HTTPVERSIONCrlf
 
-            forward_list<string> requestBufferDS;
-            forward_list<string>::iterator requestBufferDSIterator;
-            requestBufferDSIterator = requestBufferDS.before_begin();
-            int requestBufferDSSize = 0;
-            int requestDataCount = 0;
+            //done done 33:43
 
-            while (1)
-            {
-                requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
-                if (requestLength == 0)
-                    break;
-                requestBuffer[requestLength] = '\0';
-                requestBufferDS.insert_after(requestBufferDSIterator, string(requestBuffer));
-                requestBufferDSSize++;
-                requestDataCount += requestLength;
-            }
-            if (requestBufferDSSize > 0)
-            {
-                char *requestData = new char[requestDataCount + 1];
-                char *p;
-                p = requestData;
-                requestBufferDSIterator = requestBufferDS.begin();
-                const char *q;
-                while (requestBufferDSIterator != requestBufferDS.end())
-                {
-                    q = (*requestBufferDSIterator).c_str();
-                    while (*q)
-                    {
-                        *p = *q;
-                        p++;
-                        q++;
-                    }
-                    ++requestBufferDSIterator;
-                }
-                *p = '\0';
-                requestBufferDS.clear();
-
-                printf("--------request data begin-----------\n");
-                printf("%s\n", requestData);
-                printf("--------request data end-----------\n");
-                //the code to parse the request goes here
-                delete[] requestData;
-            }
-            else
-            {
-                //something if no data was received
-            }
             close(clientSocketDescriptor);
             //lot of code go here
         } //infinite loop
