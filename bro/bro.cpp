@@ -29,6 +29,67 @@ int x;
 // Amit [ The Bro Programmer ]
 
 /**
+ * @brief Contains string operations related functionality
+ * 
+ */
+class StringUtility
+{
+private:
+StringUtility();
+public:
+/**
+ * @brief Convert each character of string to lower case
+ * 
+ * @param str 
+ */
+static void toLowerCase(char *str)
+{
+if(str==NULL) return;
+for(;*str;str++) if(*str>=65 && *str<=90) *str+=32;
+}
+};
+
+/**
+ * @brief Contains Http error status related functionality
+ * 
+ */
+class HttpErrorStatusUtility
+{
+    private:
+    HttpErrorStatusUtility();
+    public:
+    static void sendBadRequestError(int clientSocketDescriptor)
+    {
+        //will complete later on
+    }
+    static void sendHttpVersionNotSupportedError(int clientSocketDescriptor,char *version)
+    {
+        //will complete later on
+    }
+    static void sendNotFoundError(int clientSocketDescriptor,char *requestURI)
+    {
+        //we will optimize this code later on
+        char content[1000];
+        char header[200];
+        char response[1200];
+        sprintf(content,"<!DOCTYPE html><html><head><meta charset='UTF-8'><title>404 Error</title></head><body>Requested Resource [%s] Not Found</body></html>",requestURI);
+        int contentLength=strlen(content);
+        sprintf(header,"HTTP/1.1 404 Not Found\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n",contentLength);
+        strcpy(response,header);
+        strcat(response,content);
+        send(clientSocketDescriptor,response,strlen(response),0);
+
+    }
+    static void sendMethodNotAllowedError(int clientSocketDescriptor,char *method,char *requestURI)
+    {
+        //will complete later on
+    }
+
+};
+
+
+
+/**
  * @brief Contains all methods related to validation
  * 
  */
@@ -125,6 +186,17 @@ public:
  */
 class Request
 {
+    private:
+    char *method;
+    char *requestURI;
+    char *httpVersion;
+    Request(char *method,char *requestURI,char *httpVersion)
+    {
+        this->method=method;
+        this->requestURI=requestURI;
+        this->httpVersion=httpVersion;
+    }
+    friend class Bro;
 };
 
 /**
@@ -182,7 +254,35 @@ public:
         this->contentIterator = this->content.insert_after(this->contentIterator, content);
         return *this;
     }
+    friend class HttpResponseUtility;
 };
+
+/**
+ * @brief Contains method that send http responses
+ * 
+ */
+class HttpResponseUtility
+{
+private:
+HttpResponseUtility();
+public:
+void static sendResponse(int clientSocketDescriptor,Response &response)
+{
+        char header[200];
+        int contentLength=response.contentLength;
+        sprintf(header,"HTTP/1.1 404 Not Found\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n",contentLength);
+        send(clientSocketDescriptor,header,strlen(header),0);
+        auto contentIterator=response.content.begin();
+        while(contentIterator!=response.content.end())
+        {
+            string str=*contentIterator;
+            send(clientSocketDescriptor,str.c_str(),str.length(),0);
+            ++contentIterator;
+        }
+        
+}
+};
+
 
 /**
  * @brief enum of request methods
@@ -264,7 +364,7 @@ public:
     {
         if (Validator::isValidURLFormat(url))
         {
-            urlMappings.insert(pair<string, URLMapping>(url,{__GET__,callBack}));
+            urlMappings.insert(pair<string, URLMapping>(url, {__GET__, callBack}));
         }
     }
 
@@ -346,17 +446,117 @@ public:
         while (1)
         {
             clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *)&clientSocketInformation, &len);
-            requestLength=recv(clientSocketDescriptor,requestBuffer,sizeof(requestBuffer)-sizeof(char),0);
-            if(requestLength==0 || requestLength==-1)
+            requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
+            if (requestLength == 0 || requestLength == -1)
             {
                 close(clientSocketDescriptor);
                 continue;
             }
-            requestBuffer[requestLength]='\0';
+            int i;
+            char *method, *requestURI, *httpVersion;
+            requestBuffer[requestLength] = '\0';
             // code to parse the first line of the http request starts here
-            // first line should be REQUEST_METHOD SPACE URI SPACE HTTPVERSIONCrlf
+            // first line should be REQUEST_METHOD SPACE URI SPACE HTTPVersionCRLF
+            method = requestBuffer;
+            i = 0;
+            while (requestBuffer[i] && requestBuffer[i] != ' ')
+                i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            requestBuffer[i] = '\0';
+            i++;
+            if (requestBuffer[i] == ' ' || requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            StringUtility::toLowerCase(method);
 
-            //done done 33:43
+            if (!(strcmp(method, "get") == 0 || strcmp(method, "post") == 0 || strcmp(method, "put") == 0 ||
+                  strcmp(method, "delete") == 0 || strcmp(method, "head") == 0 || strcmp(method, "options") == 0 ||
+                  strcmp(method, "trace") == 0 || strcmp(method, "connect") == 0))
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            requestURI=requestBuffer+i;
+            while(requestBuffer[i] && requestBuffer[i]!=' ') i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            requestBuffer[i]='\0';
+            i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            httpVersion=requestBuffer+i;
+            while(requestBuffer[i] && requestBuffer[i]!='\r' && requestBuffer[i]!='\n') i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            if (requestBuffer[i] == '\r' && requestBuffer[i+1]!='\n')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            if(requestBuffer[i]=='\r')
+            {
+                requestBuffer[i]='\0';
+                i=i+2;
+            }
+            else
+            {
+                requestBuffer[i]='\0';
+                i=i+1;
+            }
+            StringUtility::toLowerCase(httpVersion);
+            if(strcmp(httpVersion,"http/1.1")!=0)
+            {
+                HttpErrorStatusUtility::sendHttpVersionNotSupportedError(clientSocketDescriptor,httpVersion);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            auto urlMappingsIterator=urlMappings.find(requestURI);
+            if(urlMappingsIterator==urlMappings.end())
+            {
+                HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor,requestURI);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            URLMapping urlMapping=urlMappingsIterator->second;
+            if(urlMapping.requestMethod==__GET__ and strcmp(method,"get")!=0)
+            {
+                HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor,method,requestURI);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            // code to parse the header and then the payload if exists starts here
+            // code to parse the header and then the payload if exists ends here
+            Request request(method,requestURI,httpVersion);
+            Response response;
+            urlMapping.mappedFunction(request,response);
+            HttpResponseUtility::sendResponse(clientSocketDescriptor,response);
+
 
             close(clientSocketDescriptor);
             //lot of code go here
