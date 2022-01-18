@@ -3,6 +3,7 @@
 #include <forward_list>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -27,6 +28,117 @@ using namespace std;
 int x;
 
 // Amit [ The Bro Programmer ]
+
+/**
+ * @brief Content file system related functionalitites
+ * 
+ */
+class FileSystemUtility
+{
+private:
+    FileSystemUtility() {}
+
+public:
+    /**
+     * @brief Check wether file exits or not
+     * 
+     * @param path 
+     * @return true 
+     * @return false 
+     */
+    static bool fileExists(const char *path)
+    {
+        struct stat s;
+        int x;
+        x = stat(path, &s);
+        if (x != 0)
+            return false;
+        if (s.st_mode & S_IFDIR)
+            return false;
+        return true;
+    }
+
+    /**
+     * @brief Check wether directory exists or not
+     * 
+     * @param path 
+     * @return true 
+     * @return false 
+     */
+    static bool directoryExists(const char *path)
+    {
+        struct stat s;
+        int x;
+        x = stat(path, &s);
+        if (x != 0)
+            return false;
+        if (s.st_mode & S_IFDIR)
+            return true;
+        return false;
+    }
+};
+
+/**
+ * @brief Contains string operations related functionality
+ * 
+ */
+class StringUtility
+{
+private:
+    StringUtility();
+
+public:
+    /**
+ * @brief Convert each character of string to lower case
+ * 
+ * @param str 
+ */
+    static void toLowerCase(char *str)
+    {
+        if (str == NULL)
+            return;
+        for (; *str; str++)
+            if (*str >= 65 && *str <= 90)
+                *str += 32;
+    }
+};
+
+/**
+ * @brief Contains Http error status related functionality
+ * 
+ */
+class HttpErrorStatusUtility
+{
+private:
+    HttpErrorStatusUtility();
+
+public:
+    static void sendBadRequestError(int clientSocketDescriptor)
+    {
+        //will complete later on
+    }
+    static void sendHttpVersionNotSupportedError(int clientSocketDescriptor, char *version)
+    {
+        //will complete later on
+    }
+    static void sendNotFoundError(int clientSocketDescriptor, char *requestURI)
+    {
+        //we will optimize this code later on
+        char content[1000];
+        char header[200];
+        char response[1200];
+        sprintf(content, "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>404 Error</title></head><body>Requested Resource [%s] Not Found</body></html>", requestURI);
+        int contentLength = strlen(content);
+        sprintf(header, "HTTP/1.1 404 Not Found\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n", contentLength);
+        strcpy(response, header);
+        strcat(response, content);
+        send(clientSocketDescriptor, response, strlen(response), 0);
+    }
+    static void sendMethodNotAllowedError(int clientSocketDescriptor, char *method, char *requestURI)
+    {
+        //will complete later on
+    }
+};
 
 /**
  * @brief Contains all methods related to validation
@@ -60,8 +172,7 @@ public:
      */
     static bool isValidPath(string &path)
     {
-        //right now do nothing
-        return true;
+        return FileSystemUtility::directoryExists(path.c_str());
     }
 
     /**
@@ -125,6 +236,17 @@ public:
  */
 class Request
 {
+private:
+    char *method;
+    char *requestURI;
+    char *httpVersion;
+    Request(char *method, char *requestURI, char *httpVersion)
+    {
+        this->method = method;
+        this->requestURI = requestURI;
+        this->httpVersion = httpVersion;
+    }
+    friend class Bro;
 };
 
 /**
@@ -181,6 +303,33 @@ public:
         this->contentLength += content.length();
         this->contentIterator = this->content.insert_after(this->contentIterator, content);
         return *this;
+    }
+    friend class HttpResponseUtility;
+};
+
+/**
+ * @brief Contains method that send http responses
+ * 
+ */
+class HttpResponseUtility
+{
+private:
+    HttpResponseUtility();
+
+public:
+    void static sendResponse(int clientSocketDescriptor, Response &response)
+    {
+        char header[200];
+        int contentLength = response.contentLength;
+        sprintf(header, "HTTP/1.1 404 Not Found\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n", contentLength);
+        send(clientSocketDescriptor, header, strlen(header), 0);
+        auto contentIterator = response.content.begin();
+        while (contentIterator != response.content.end())
+        {
+            string str = *contentIterator;
+            send(clientSocketDescriptor, str.c_str(), str.length(), 0);
+            ++contentIterator;
+        }
     }
 };
 
@@ -250,9 +399,52 @@ public:
         }
         else
         {
-            //not yet decided
+            string exception = string("Invalid static resource folder path : ") + staticResourcesFolder;
+            throw exception;
         }
     }
+
+
+    bool serveStaticResource(int clientSocketDescriptor,const char *requestURI)
+    {
+        if(this->staticResourcesFolder.length()==0) return false;
+        if(!FileSystemUtility::directoryExists(this->staticResourcesFolder.c_str())) return false;
+        string resourcePath=this->staticResourcesFolder+string(requestURI);
+        cout<<"Static resource path is "<<resourcePath<<endl;
+        if(!FileSystemUtility::fileExists(resourcePath.c_str())) return false;
+        FILE *file=fopen(resourcePath.c_str(),"rb");
+        if(file==NULL) return false;
+        long fileSize;
+        fseek(file,0,SEEK_END);
+        fileSize=ftell(file);
+        if(fileSize==0)
+        {
+            fclose(file);
+            return false;
+        }
+        rewind(file); //to move the internal file pointer to the start of the file
+
+        char header[200];
+        sprintf(header,"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n",fileSize);
+        send(clientSocketDescriptor,header,strlen(header),0);
+        
+        long bytesLeftToRead;
+        int bytesToRead;
+        char buffer[4096];
+        bytesToRead=4096;
+        bytesLeftToRead=fileSize;
+        while(bytesLeftToRead>0)
+        {
+            if(bytesLeftToRead<bytesToRead) bytesToRead=bytesLeftToRead;
+            fread(buffer,bytesToRead,1,file);
+            if(feof(file)) break; //this won't happen in our case
+            send(clientSocketDescriptor,buffer,bytesToRead,0);
+            bytesLeftToRead=bytesLeftToRead-bytesToRead;
+        }
+        fclose(file);
+        return true;
+    }
+
 
     /**
      * @brief To handle GET Type request with particular urlPattern
@@ -264,7 +456,7 @@ public:
     {
         if (Validator::isValidURLFormat(url))
         {
-            urlMappings.insert(pair<string, URLMapping>(url,{__GET__,callBack}));
+            urlMappings.insert(pair<string, URLMapping>(url, {__GET__, callBack}));
         }
     }
 
@@ -346,58 +538,123 @@ public:
         while (1)
         {
             clientSocketDescriptor = accept(serverSocketDescriptor, (struct sockaddr *)&clientSocketInformation, &len);
-            if (clientSocketDescriptor < 0)
+            requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
+            if (requestLength == 0 || requestLength == -1)
             {
-                //not yet decided, will write this code later on
+                close(clientSocketDescriptor);
+                continue;
             }
-
-            forward_list<string> requestBufferDS;
-            forward_list<string>::iterator requestBufferDSIterator;
-            requestBufferDSIterator = requestBufferDS.before_begin();
-            int requestBufferDSSize = 0;
-            int requestDataCount = 0;
-
-            while (1)
+            int i;
+            char *method, *requestURI, *httpVersion;
+            requestBuffer[requestLength] = '\0';
+            // code to parse the first line of the http request starts here
+            // first line should be REQUEST_METHOD SPACE URI SPACE HTTPVersionCRLF
+            method = requestBuffer;
+            i = 0;
+            while (requestBuffer[i] && requestBuffer[i] != ' ')
+                i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
             {
-                requestLength = recv(clientSocketDescriptor, requestBuffer, sizeof(requestBuffer) - sizeof(char), 0);
-                if (requestLength == 0)
-                    break;
-                requestBuffer[requestLength] = '\0';
-                requestBufferDS.insert_after(requestBufferDSIterator, string(requestBuffer));
-                requestBufferDSSize++;
-                requestDataCount += requestLength;
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
             }
-            if (requestBufferDSSize > 0)
+            requestBuffer[i] = '\0';
+            i++;
+            if (requestBuffer[i] == ' ' || requestBuffer[i] == '\0')
             {
-                char *requestData = new char[requestDataCount + 1];
-                char *p;
-                p = requestData;
-                requestBufferDSIterator = requestBufferDS.begin();
-                const char *q;
-                while (requestBufferDSIterator != requestBufferDS.end())
-                {
-                    q = (*requestBufferDSIterator).c_str();
-                    while (*q)
-                    {
-                        *p = *q;
-                        p++;
-                        q++;
-                    }
-                    ++requestBufferDSIterator;
-                }
-                *p = '\0';
-                requestBufferDS.clear();
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            StringUtility::toLowerCase(method);
 
-                printf("--------request data begin-----------\n");
-                printf("%s\n", requestData);
-                printf("--------request data end-----------\n");
-                //the code to parse the request goes here
-                delete[] requestData;
+            if (!(strcmp(method, "get") == 0 || strcmp(method, "post") == 0 || strcmp(method, "put") == 0 ||
+                  strcmp(method, "delete") == 0 || strcmp(method, "head") == 0 || strcmp(method, "options") == 0 ||
+                  strcmp(method, "trace") == 0 || strcmp(method, "connect") == 0))
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            requestURI = requestBuffer + i;
+            while (requestBuffer[i] && requestBuffer[i] != ' ')
+                i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            requestBuffer[i] = '\0';
+            i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            httpVersion = requestBuffer + i;
+            while (requestBuffer[i] && requestBuffer[i] != '\r' && requestBuffer[i] != '\n')
+                i++;
+            //If there is BAD Request
+            if (requestBuffer[i] == '\0')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            if (requestBuffer[i] == '\r' && requestBuffer[i + 1] != '\n')
+            {
+                HttpErrorStatusUtility::sendBadRequestError(clientSocketDescriptor);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            if (requestBuffer[i] == '\r')
+            {
+                requestBuffer[i] = '\0';
+                i = i + 2;
             }
             else
             {
-                //something if no data was received
+                requestBuffer[i] = '\0';
+                i = i + 1;
             }
+            StringUtility::toLowerCase(httpVersion);
+            if (strcmp(httpVersion, "http/1.1") != 0)
+            {
+                HttpErrorStatusUtility::sendHttpVersionNotSupportedError(clientSocketDescriptor, httpVersion);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            cout << "Request arrived, uri is " << requestURI << endl;
+            auto urlMappingsIterator = urlMappings.find(requestURI);
+            if (urlMappingsIterator == urlMappings.end())
+            {
+                if (!serveStaticResource(clientSocketDescriptor, requestURI))
+                {
+                    HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor, requestURI);
+                }
+                close(clientSocketDescriptor);
+                continue;
+            }
+            URLMapping urlMapping = urlMappingsIterator->second;
+            if (urlMapping.requestMethod == __GET__ and strcmp(method, "get") != 0)
+            {
+                HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor, method, requestURI);
+                close(clientSocketDescriptor);
+                continue;
+            }
+            // code to parse the header and then the payload if exists starts here
+            // code to parse the header and then the payload if exists ends here
+            Request request(method, requestURI, httpVersion);
+            Response response;
+            urlMapping.mappedFunction(request, response);
+            HttpResponseUtility::sendResponse(clientSocketDescriptor, response);
+
             close(clientSocketDescriptor);
             //lot of code go here
         } //infinite loop
@@ -410,16 +667,19 @@ public:
 // Bobby [ The web Application Developer - User of Bro web server ]
 int main()
 {
-    Bro bro;
-    bro.setStaticResourcesFolder("whatever");
+    try
+    {
 
-    /**
+        Bro bro;
+        bro.setStaticResourcesFolder("whatever");
+
+        /**
      * @brief If request is of GET type and url is / (i.e no resource name has been specified) then this function should get executed
      * 
      */
-    bro.get("/", [](Request &request, Response &response) -> void
-            {
-                const char *html = R""""(
+        bro.get("/", [](Request &request, Response &response) -> void
+                {
+                    const char *html = R""""(
             <!DOCTYOE HTML>
             <html lang='en'>
             <head>
@@ -433,17 +693,17 @@ int main()
             </body>
             </html>
         )"""";
-                response.setContentType("text/html"); // Setting MIME type
-                response << html;
-            });
+                    response.setContentType("text/html"); // Setting MIME type
+                    response << html;
+                });
 
-    /**
+        /**
      * @brief If request is of GET type and url is /getCustomers (i.e resource name has been specified) then this function should get executed
      * 
      */
-    bro.get("/getCustomers", [](Request &request, Response &response) -> void
-            {
-                const char *html = R""""(
+        bro.get("/getCustomers", [](Request &request, Response &response) -> void
+                {
+                    const char *html = R""""(
             <!DOCTYPE HTML>
             <html lang='en'>
             <head>
@@ -461,22 +721,27 @@ int main()
             </body>
             </html>
         )"""";
-                response.setContentType("text/html"); // Setting MIME type
-                response << html;
-            });
+                    response.setContentType("text/html"); // Setting MIME type
+                    response << html;
+                });
 
-    /**
+        /**
      * @brief Here we specify port number on which Bro HTTP server accept request
      * 
      */
-    bro.listen(6060, [](Error &error) -> void
-               {
-                   if (error.hasError())
+        bro.listen(6060, [](Error &error) -> void
                    {
-                       cout << error.getError();
-                       return;
-                   }
-                   cout << "Bro HTTP server is ready to accept request on port 6060" << endl;
-               });
+                       if (error.hasError())
+                       {
+                           cout << error.getError();
+                           return;
+                       }
+                       cout << "Bro HTTP server is ready to accept request on port 6060" << endl;
+                   });
+    }
+    catch (string exception)
+    {
+        cout << exception << endl;
+    }
     return 0;
 }
